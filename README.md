@@ -1,12 +1,31 @@
 # AssistIQ Banking Copilot
 
-**Live Demo:** [https://assistiq-banking-copilot.netlify.app/](https://assistiq-banking-copilot.netlify.app/)
+**AssistIQ Banking Copilot** is an AI-powered customer assistance review workspace built to demonstrate AI architecture, enterprise software engineering, responsible AI design, and human-in-the-loop decision support for regulated banking operations.
 
-**AssistIQ Banking Copilot** is an AI-powered customer assistance review workspace built to demonstrate AI architecture, enterprise software engineering, responsible AI design, and human-in-the-loop decision support for a regulated banking environment.
+**Built by Jamshir Qureshi**
 
-This project was created as a portfolio and interview demonstration by **Jamshir Qureshi**.
+## Live Demo
 
-The application simulates how a loan servicing or customer assistance team could use AI to review hardship support requests. The system does not approve or deny customers. Instead, it provides structured decision support with policy evidence, customer factors, missing documentation, risk flags, allowed next actions, and audit-friendly review guidance.
+[View AssistIQ Banking Copilot](https://assistiq-banking-copilot.netlify.app/)
+
+---
+
+## Project Overview
+
+AssistIQ Banking Copilot simulates how a loan servicing or customer assistance team can use AI to review hardship assistance requests. The system is designed to help servicing agents evaluate customer context, loan history, payment records, and policy evidence before routing the case for human review.
+
+The application does **not** approve or deny customers. Instead, it provides structured AI decision support with:
+
+- Customer and loan factors
+- Payment history review
+- Policy evidence
+- Missing documentation
+- Risk flags
+- Allowed next actions
+- Human-in-the-loop compliance guidance
+- Audit logging for traceability
+
+This project is designed as a portfolio demonstration of applied AI architecture, cloud-ready software engineering, and responsible AI patterns in a regulated financial services workflow.
 
 ---
 
@@ -14,57 +33,252 @@ The application simulates how a loan servicing or customer assistance team could
 
 AssistIQ is designed to help banking operations teams answer:
 
-- Is the customer potentially eligible for hardship assistance?
+- Is the customer potentially eligible for hardship assistance review?
+- What customer, loan, and payment factors should be considered?
 - What policy evidence supports the recommendation?
 - What documents are missing?
-- What risk flags require manager review?
-- What actions are allowed next?
-- How can AI assist without replacing human decision-making?
-
-The product demonstrates a practical AI workflow for regulated industries where explainability, auditability, and human review are required.
+- What risk flags require escalation?
+- What safe next actions can the servicing agent take?
+- How can AI assist without replacing authorized human decision-making?
 
 ---
 
-## Live Demo Architecture
+## Current Deployed Architecture
 
-The deployed demo uses a streamlined Next.js architecture that is optimized for fast portfolio delivery, reliable public access, and a clear demonstration of the end-to-end AI workflow without requiring separate backend hosting.
+The deployed demo uses a cloud-ready Next.js architecture connected to Supabase PostgreSQL and Groq LLM inference. This design supports reliable public access while demonstrating a realistic end-to-end AI workflow with database-backed customer context, policy evidence retrieval, structured LLM output, and audit logging.
 
 ```mermaid
 flowchart TD
     A[Next.js Frontend UI] --> B[Case Review Workspace]
-    B --> C[Next.js API Route: /api/assist]
-    C --> D[Demo Decision-Support Engine]
-    D --> E[Policy Evidence Response]
-    D --> F[Customer Factors]
-    D --> G[Missing Documentation]
-    D --> H[Risk Flags]
-    D --> I[Allowed Actions]
-    E --> J[AI Recommendation Card]
-    F --> J
-    G --> J
-    H --> J
-    I --> J
-    J --> K[Human-in-the-Loop Review UI]
+    B --> C[Next.js API Route: /api/customers]
+    B --> D[Next.js API Route: /api/assist]
+
+    C --> E[(Supabase PostgreSQL)]
+    D --> E
+
+    E --> F[Customer Profile]
+    E --> G[Loan History]
+    E --> H[Payment Records]
+    E --> I[Policy Documents]
+    E --> J[Document Chunks]
+
+    F --> K[AI Review Context Builder]
+    G --> K
+    H --> K
+    I --> K
+    J --> K
+
+    K --> L[Groq LLM]
+    L --> M[Structured Decision-Support JSON]
+
+    M --> N[Recommendation Card]
+    M --> O[Customer Factors]
+    M --> P[Missing Documentation]
+    M --> Q[Risk Flags]
+    M --> R[Allowed Actions]
+    M --> S[Policy Evidence]
+
+    M --> T[(AI Audit Log)]
+    N --> U[Human-in-the-Loop Review UI]
 ```
 
-### Demo Deployment
+---
+
+## Deployment Flow
 
 ```mermaid
 flowchart LR
     A[GitHub Repository] --> B[Netlify Build]
-    B --> C[Next.js App]
-    C --> D[Next.js API Route]
-    D --> E[Structured AI Review Response]
-    C --> F[Public Portfolio Demo]
+    B --> C[Next.js Application]
+    C --> D[Server-Side API Routes]
+    D --> E[Supabase PostgreSQL]
+    D --> F[Groq LLM]
+    E --> G[Customer, Loan, Payment, and Policy Data]
+    F --> H[Structured AI Review Response]
+    H --> I[Netlify Public Demo]
 ```
 
-This demo version is intentionally lightweight and deployment-friendly. It showcases the product experience, workflow design, responsible AI patterns, and frontend/backend interaction using a Next.js API route.
+---
+
+## Data Flow
+
+```mermaid
+sequenceDiagram
+    participant UI as Next.js UI
+    participant API as /api/assist
+    participant DB as Supabase PostgreSQL
+    participant LLM as Groq LLM
+    participant Audit as ai_audit_log
+
+    UI->>API: Submit customerId and review question
+    API->>DB: Fetch customer profile
+    API->>DB: Fetch loan history
+    API->>DB: Fetch payment records
+    API->>DB: Fetch policy document chunks
+    API->>LLM: Send structured review context and guardrails
+    LLM-->>API: Return structured JSON decision-support response
+    API->>Audit: Save question, response, model, confidence, and document ids
+    API-->>UI: Return recommendation, risks, missing docs, and policy evidence
+```
+
+---
+
+## AI Decision-Support Behavior
+
+The AI assistant is intentionally constrained for regulated banking workflows.
+
+It can:
+
+- Summarize customer hardship context
+- Review customer, loan, and payment factors
+- Identify missing documentation
+- Highlight risk flags
+- Cite policy evidence
+- Recommend safe next actions
+- Suggest escalation to a manager when needed
+
+It cannot:
+
+- Approve hardship assistance
+- Deny hardship assistance
+- Make a final credit decision
+- Override policy
+- Replace authorized human review
+
+Every response includes a compliance disclaimer that the output is decision support only.
+
+---
+
+## Responsible AI Design
+
+AssistIQ follows responsible AI principles for regulated workflows:
+
+- **Human-in-the-loop:** Final decisions require authorized employee review.
+- **Policy evidence:** Recommendations include supporting policy references.
+- **Structured output:** LLM responses are constrained to a predictable JSON contract.
+- **Audit logging:** AI questions, responses, confidence, model used, and retrieved documents are recorded.
+- **Fallback behavior:** If the LLM provider is unavailable, deterministic fallback logic prevents the application from failing.
+- **Role-aware design:** The reference architecture supports future role-based permissions and workflow escalation.
+- **No autonomous approval:** The system never approves or denies assistance.
+
+---
+
+## Technology Stack
+
+### Deployed Demo Stack
+
+- **Next.js** – frontend and server-side API routes
+- **React** – case review user interface
+- **TypeScript** – typed application logic
+- **Supabase PostgreSQL** – customer, loan, payment, policy, and audit data
+- **Groq LLM** – dynamic AI decision-support generation
+- **Netlify** – public cloud deployment
+- **GitHub** – source control and deployment integration
+
+### Supabase Tables Used
+
+- `customers`
+- `loans`
+- `payments`
+- `policy_documents`
+- `document_chunks`
+- `ai_audit_log`
+- `user_roles`
+
+---
+
+## API Routes
+
+### `/api/customers`
+
+Retrieves customer case data from Supabase, including customer profile and related loan information for the case queue.
+
+### `/api/assist`
+
+Receives a customer ID and review question, then:
+
+1. Fetches the customer profile from Supabase.
+2. Fetches loan history.
+3. Fetches payment records.
+4. Fetches policy document chunks.
+5. Builds a regulated AI review prompt.
+6. Calls Groq LLM for structured decision-support output.
+7. Saves the interaction to `ai_audit_log`.
+8. Returns a structured response to the UI.
+
+---
+
+## Environment Variables
+
+The application requires these environment variables for local and Netlify deployment:
+
+```env
+NEXT_PUBLIC_SUPABASE_URL=your_supabase_project_url
+SUPABASE_SERVICE_ROLE_KEY=your_supabase_service_role_key
+GROQ_API_KEY=your_groq_api_key
+```
+
+Security notes:
+
+- `SUPABASE_SERVICE_ROLE_KEY` must only be used server-side.
+- `GROQ_API_KEY` must only be used server-side.
+- Do not commit `.env.local` to GitHub.
+- Do not expose service keys in frontend code.
+
+---
+
+## Local Development
+
+Install dependencies:
+
+```bash
+npm install
+```
+
+Run the development server:
+
+```bash
+npm run dev
+```
+
+Open:
+
+```text
+http://localhost:3000
+```
+
+Build locally:
+
+```bash
+npm run build
+```
+
+---
+
+## Netlify Deployment
+
+The app is deployed through Netlify using GitHub integration.
+
+Recommended Netlify settings:
+
+```text
+Build command: npm run build
+Publish directory: .next
+```
+
+Required Netlify environment variables:
+
+```text
+NEXT_PUBLIC_SUPABASE_URL
+SUPABASE_SERVICE_ROLE_KEY
+GROQ_API_KEY
+```
 
 ---
 
 ## Enterprise Reference Architecture
 
-The broader enterprise architecture for this solution would use a full backend, persistent database, policy retrieval layer, AI orchestration, and audit logging.
+In a production banking environment, AssistIQ could be extended with a deeper enterprise architecture.
 
 ```mermaid
 flowchart TD
@@ -114,64 +328,36 @@ flowchart TD
 
 ## AI Architecture Concepts Demonstrated
 
-This project demonstrates several AI architect and senior software engineering concepts:
+This project demonstrates:
 
 - AI-assisted decision support for regulated financial workflows
-- Human-in-the-loop design where AI cannot approve or deny cases
-- Policy evidence and citation-based explainability
-- Structured AI response contracts
-- Customer, policy, risk, and workflow data modeling
-- Missing-document detection
-- Manager escalation workflow
-- Audit-friendly interaction design
-- Separation between demo deployment and enterprise production architecture
-- Cloud-ready frontend deployment using Netlify
-- Extensible backend architecture for future Spring Boot, Supabase, RAG, and LLM integration
-
----
-
-## Responsible AI Design
-
-AssistIQ is designed around responsible AI principles:
-
-- The AI assistant provides recommendations only.
-- Final approval must be completed by an authorized human reviewer.
-- Policy evidence is shown with every recommendation.
-- Missing information is clearly identified.
-- Risk flags trigger manager review.
-- Allowed actions are constrained to safe workflow steps.
-- Audit trail messaging supports traceability.
-
----
-
-## Technology Stack
-
-### Current Demo Stack
-
-- Next.js
-- React
-- TypeScript
-- Next.js API Routes
-- Netlify deployment
-- GitHub source control
-
-### Enterprise Reference Stack
-
-- Next.js frontend
-- Java Spring Boot backend
-- Supabase PostgreSQL
-- Supabase Auth
-- pgvector / vector database
-- Retrieval-Augmented Generation
-- LLM orchestration layer
+- Server-side LLM integration
+- Supabase-backed application data
+- Policy evidence retrieval
+- Structured LLM response contracts
+- Human-in-the-loop workflow design
+- Deterministic fallback behavior
 - Audit logging
-- Role-based access control
-- Monitoring and observability
+- Secure environment variable handling
+- Frontend/backend integration through Next.js API routes
+- Cloud deployment through Netlify
+- Responsible AI controls for high-risk decision workflows
 
 ---
 
 ## Portfolio Positioning
 
-This project is intended to demonstrate how I approach AI product architecture from both a technical and business workflow perspective. It shows how AI can be embedded into enterprise operations while preserving human accountability, policy compliance, auditability, and responsible decision-making.
+AssistIQ Banking Copilot demonstrates how AI can be integrated into enterprise operations while preserving compliance, traceability, explainability, and human accountability.
+
+The project shows both hands-on implementation and architecture thinking across:
+
+- Product workflow design
+- AI orchestration
+- Database integration
+- API design
+- Prompt design and guardrails
+- Responsible AI
+- Cloud deployment
+- Software engineering delivery
 
 **Built by Jamshir Qureshi**
