@@ -6,14 +6,15 @@
   },
   "dependencies": {
     "@netlify/plugin-nextjs": "latest",
+    "@supabase/supabase-js": "^2.108.1",
     "next": "15.5.7",
     "react": "19.1.0",
     "react-dom": "19.1.0"
   },
   "devDependencies": {
-    "typescript": "latest",
     "@types/node": "latest",
     "@types/react": "latest",
-    "@types/react-dom": "latest"
+    "@types/react-dom": "latest",
+    "typescript": "latest"
   }
 }
