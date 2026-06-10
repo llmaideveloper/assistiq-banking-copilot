@@ -270,6 +270,15 @@ export default function Home() {
             )}
           </section>
         </div>
+
+        <footer className="site-footer">
+          <p>
+            Built by <strong>Jamshir Qureshi</strong> · AI Architect & Software Engineering Portfolio Demo
+          </p>
+          <p>
+            Demonstrates AI decision support, human-in-the-loop review, policy evidence, workflow design, and responsible AI controls.
+          </p>
+        </footer>
       </div>
     </main>
   );
