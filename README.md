@@ -1,5 +1,7 @@
 # AssistIQ Banking Copilot
 
+**Live Demo:** [https://assistiq-banking-copilot.netlify.app/](https://assistiq-banking-copilot.netlify.app/)
+
 **AssistIQ Banking Copilot** is an AI-powered customer assistance review workspace built to demonstrate AI architecture, enterprise software engineering, responsible AI design, and human-in-the-loop decision support for a regulated banking environment.
 
 This project was created as a portfolio and interview demonstration by **Jamshir Qureshi**.
@@ -25,25 +27,24 @@ The product demonstrates a practical AI workflow for regulated industries where 
 
 ## Live Demo Architecture
 
-The deployed demo uses a lightweight Next.js architecture so it can run online without requiring paid backend infrastructure.
+The deployed demo uses a streamlined Next.js architecture that is optimized for fast portfolio delivery, reliable public access, and a clear demonstration of the end-to-end AI workflow without requiring separate backend hosting.
 
 ```mermaid
 flowchart TD
-    A[User / Hiring Manager] --> B[Next.js Frontend UI]
-    B --> C[Case Review Workspace]
-    C --> D[Next.js API Route: /api/assist]
-    D --> E[Demo Decision-Support Engine]
-    E --> F[Policy Evidence Response]
-    E --> G[Customer Factors]
-    E --> H[Missing Documentation]
-    E --> I[Risk Flags]
-    E --> J[Allowed Actions]
-    F --> K[AI Recommendation Card]
-    G --> K
-    H --> K
-    I --> K
-    J --> K
-    K --> L[Human-in-the-Loop Review UI]
+    A[Next.js Frontend UI] --> B[Case Review Workspace]
+    B --> C[Next.js API Route: /api/assist]
+    C --> D[Demo Decision-Support Engine]
+    D --> E[Policy Evidence Response]
+    D --> F[Customer Factors]
+    D --> G[Missing Documentation]
+    D --> H[Risk Flags]
+    D --> I[Allowed Actions]
+    E --> J[AI Recommendation Card]
+    F --> J
+    G --> J
+    H --> J
+    I --> J
+    J --> K[Human-in-the-Loop Review UI]
 ```
 
 ### Demo Deployment
@@ -57,7 +58,7 @@ flowchart LR
     C --> F[Public Portfolio Demo]
 ```
 
-This demo version is intentionally simple to deploy and share. It showcases the product experience, workflow design, responsible AI patterns, and frontend/backend interaction using a Next.js API route.
+This demo version is intentionally lightweight and deployment-friendly. It showcases the product experience, workflow design, responsible AI patterns, and frontend/backend interaction using a Next.js API route.
 
 ---
 
@@ -166,55 +167,6 @@ AssistIQ is designed around responsible AI principles:
 - Audit logging
 - Role-based access control
 - Monitoring and observability
-
----
-
-## Local Run
-
-```bash
-npm install
-npm run dev
-```
-
-Open the URL printed by Next.js, for example:
-
-```text
-http://192.168.252.2:3000
-```
-
-Click **Run AI Case Review**.
-
----
-
-## Test API Directly
-
-```bash
-curl -X POST http://localhost:3000/api/assist \
-  -H "Content-Type: application/json" \
-  -d '{"customerId":"C1001","question":"Is this customer eligible for hardship payment plan?"}'
-```
-
-The response should include:
-
-- `POSSIBLY_ELIGIBLE`
-- confidence score
-- policy evidence
-- customer factors
-- missing documentation
-- risk flags
-- allowed actions
-
----
-
-## Netlify Deploy
-
-Use these settings in Netlify:
-
-- Base directory: leave blank if this repository root contains the Next.js app
-- Build command: `npm run build`
-- Publish directory: `.next`
-
-The API route `/api/assist` will be handled by Netlify's Next.js support.
 
 ---
 
