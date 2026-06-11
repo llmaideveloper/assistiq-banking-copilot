@@ -8,9 +8,6 @@
 
 [View AssistIQ Banking Copilot](https://assistiq-banking-copilot.netlify.app/)
 
-## GitHub README
-
-[View README and Architecture](https://github.com/llmaideveloper/assistiq-banking-copilot/blob/main/README.md)
 
 ---
 
