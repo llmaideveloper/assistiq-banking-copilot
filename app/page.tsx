@@ -1,6 +1,6 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 
 type PolicyEvidence = {
   document: string;
@@ -8,10 +8,25 @@ type PolicyEvidence = {
   quote: string;
 };
 
+type CustomerCase = {
+  id: string;
+  name: string;
+  income?: number | null;
+  employmentStatus?: string | null;
+  creditScore?: number | null;
+  riskBand?: string | null;
+  riskLabel?: string;
+  status?: string;
+  maxDelinquencyDays?: number;
+  loanCount?: number;
+};
+
 type AiResponse = {
   recommendation: string;
   summary: string;
   confidence: number;
+  customerName?: string;
+  dataSource?: string;
   policyEvidence: PolicyEvidence[];
   customerFactors: string[];
   missingInformation: string[];
@@ -21,12 +36,59 @@ type AiResponse = {
 };
 
 const ASSIST_ENDPOINT = '/api/assist';
+const CUSTOMERS_ENDPOINT = '/api/customers';
 
-const demoCases = [
-  ['C1001', 'Ava Johnson', 'Medium Risk', 'Manager Review'],
-  ['C1002', 'Marcus Reed', 'Low Risk', 'Missing Docs'],
-  ['C1003', 'Linda Patel', 'High Risk', 'Escalated'],
+const fallbackCases: CustomerCase[] = [
+  {
+    id: 'C1001',
+    name: 'Ava Johnson',
+    riskLabel: 'Medium Risk',
+    status: 'Manager Review',
+    employmentStatus: 'reduced_hours',
+    creditScore: 690,
+    riskBand: 'medium',
+    maxDelinquencyDays: 35,
+    loanCount: 1,
+  },
+  {
+    id: 'C1002',
+    name: 'Marcus Reed',
+    riskLabel: 'Low Risk',
+    status: 'Missing Docs',
+    employmentStatus: 'employed',
+    creditScore: 720,
+    riskBand: 'low',
+    maxDelinquencyDays: 12,
+    loanCount: 1,
+  },
+  {
+    id: 'C1003',
+    name: 'Linda Patel',
+    riskLabel: 'High Risk',
+    status: 'Escalated',
+    employmentStatus: 'medical_leave',
+    creditScore: 645,
+    riskBand: 'high',
+    maxDelinquencyDays: 48,
+    loanCount: 1,
+  },
 ];
+
+function titleCase(value?: string | null) {
+  if (!value) return 'Unknown';
+  return value
+    .replaceAll('_', ' ')
+    .replace(/\b\w/g, (letter) => letter.toUpperCase());
+}
+
+function money(value?: number | null) {
+  if (value === null || value === undefined) return 'N/A';
+  return new Intl.NumberFormat('en-US', {
+    style: 'currency',
+    currency: 'USD',
+    maximumFractionDigits: 0,
+  }).format(Number(value));
+}
 
 export default function Home() {
   const [customerId, setCustomerId] = useState('C1001');
@@ -34,13 +96,52 @@ export default function Home() {
     'Is this customer eligible for hardship payment plan?'
   );
   const [loading, setLoading] = useState(false);
+  const [customersLoading, setCustomersLoading] = useState(true);
   const [result, setResult] = useState<AiResponse | null>(null);
   const [error, setError] = useState('');
+  const [customerError, setCustomerError] = useState('');
+  const [customerCases, setCustomerCases] = useState<CustomerCase[]>(fallbackCases);
+
+  const selectedCustomer =
+    customerCases.find((customer) => customer.id === customerId) || customerCases[0];
 
   const confidencePercent = useMemo(
     () => (result ? Math.round(result.confidence * 100) : 0),
     [result]
   );
+
+  useEffect(() => {
+    async function loadCustomers() {
+      setCustomersLoading(true);
+      setCustomerError('');
+
+      try {
+        const res = await fetch(CUSTOMERS_ENDPOINT, { cache: 'no-store' });
+
+        if (!res.ok) {
+          const text = await res.text();
+          throw new Error(text || `Customer API error ${res.status}`);
+        }
+
+        const data = await res.json();
+        const customers = data.customers || [];
+
+        if (customers.length > 0) {
+          setCustomerCases(customers);
+          setCustomerId(customers[0].id);
+        }
+      } catch (err: any) {
+        setCustomerError(
+          'Using fallback demo cases because Supabase customers could not be loaded.'
+        );
+        console.error(err);
+      } finally {
+        setCustomersLoading(false);
+      }
+    }
+
+    loadCustomers();
+  }, []);
 
   async function askAI() {
     setLoading(true);
@@ -80,7 +181,7 @@ export default function Home() {
               policy evidence, missing documentation, risk flags, escalation
               guidance, and human-in-the-loop controls.
             </p>
-            <p className="footer-note">Backend mode: Next.js API Route</p>
+            <p className="footer-note">Backend mode: Supabase PostgreSQL + Next.js API Routes</p>
           </div>
           <div className="status-card">
             <small>System Status</small>
@@ -90,10 +191,10 @@ export default function Home() {
 
         <section className="metrics">
           {[
-            ['Open Cases', '24'],
-            ['Manager Reviews', '6'],
-            ['Missing Docs', '9'],
-            ['Avg Confidence', '82%'],
+            ['Open Cases', String(customerCases.length)],
+            ['Manager Reviews', String(customerCases.filter((c) => c.status?.toLowerCase().includes('manager')).length)],
+            ['Supabase Source', customerError ? 'Fallback' : 'Live'],
+            ['Avg Confidence', result ? `${confidencePercent}%` : 'Pending'],
           ].map(([label, value]) => (
             <div className="metric" key={label}>
               <span>{label}</span>
@@ -102,25 +203,30 @@ export default function Home() {
           ))}
         </section>
 
+        {customerError && <div className="notice warning"><strong>Data Notice:</strong> {customerError}</div>}
+
         <div className="workspace">
           <aside className="panel">
             <div className="panel-title">
               <h2>Case Queue</h2>
-              <span className="badge badge-cyan">Live Demo</span>
+              <span className="badge badge-cyan">{customersLoading ? 'Loading' : 'Supabase'}</span>
             </div>
             <div className="case-list">
-              {demoCases.map(([id, name, risk, status]) => (
+              {customerCases.map((customer) => (
                 <button
-                  key={id}
-                  className={`case-card ${id === customerId ? 'active' : ''}`}
-                  onClick={() => setCustomerId(id)}
+                  key={customer.id}
+                  className={`case-card ${customer.id === customerId ? 'active' : ''}`}
+                  onClick={() => {
+                    setCustomerId(customer.id);
+                    setResult(null);
+                  }}
                 >
                   <div className="case-header">
-                    <strong>{name}</strong>
-                    <span>{id}</span>
+                    <strong>{customer.name}</strong>
+                    <span>{customer.id}</span>
                   </div>
-                  <p>{risk}</p>
-                  <p className="case-status">{status}</p>
+                  <p>{customer.riskLabel || titleCase(customer.riskBand)}</p>
+                  <p className="case-status">{customer.status || 'Review'}</p>
                 </button>
               ))}
             </div>
@@ -131,23 +237,24 @@ export default function Home() {
               <div className="profile-head">
                 <div>
                   <p className="kicker">Case Review</p>
-                  <h2>Ava Johnson</h2>
+                  <h2>{selectedCustomer?.name || 'Customer'}</h2>
                   <p>
-                    Customer ID {customerId} · Reduced hours · Medium risk · 35 days
-                    delinquent
+                    Customer ID {customerId} · {titleCase(selectedCustomer?.employmentStatus)} ·{' '}
+                    {titleCase(selectedCustomer?.riskBand)} risk ·{' '}
+                    {selectedCustomer?.maxDelinquencyDays ?? 0} days delinquent
                   </p>
                 </div>
                 <div className="score">
                   <span>Credit Score</span>
-                  <strong>690</strong>
+                  <strong>{selectedCustomer?.creditScore ?? 'N/A'}</strong>
                 </div>
               </div>
               <div className="facts">
                 {[
-                  ['Income', '$62,000'],
-                  ['Employment', 'Reduced Hours'],
-                  ['Risk Band', 'Medium'],
-                  ['Max Delinquency', '35 days'],
+                  ['Income', money(selectedCustomer?.income)],
+                  ['Employment', titleCase(selectedCustomer?.employmentStatus)],
+                  ['Risk Band', titleCase(selectedCustomer?.riskBand)],
+                  ['Max Delinquency', `${selectedCustomer?.maxDelinquencyDays ?? 0} days`],
                 ].map(([label, value]) => (
                   <div className="fact" key={label}>
                     <span>{label}</span>
@@ -161,8 +268,8 @@ export default function Home() {
               <h2>AI Review Request</h2>
               <p className="subhead">
                 Ask a controlled decision-support question. The assistant returns
-                policy evidence, risk flags, missing documentation, and allowed next
-                actions.
+                Supabase-backed policy evidence, customer factors, loan/payment context,
+                risk flags, missing documentation, and allowed next actions.
               </p>
               <div className="form-grid">
                 <input
@@ -192,6 +299,7 @@ export default function Home() {
                       <p className="kicker">AI Recommendation</p>
                       <h2>{result.recommendation.replaceAll('_', ' ')}</h2>
                       <p>{result.summary}</p>
+                      {result.dataSource && <p className="footer-note">Data source: {result.dataSource}</p>}
                     </div>
                     <div className="confidence">
                       <span>Confidence</span>
@@ -257,6 +365,9 @@ export default function Home() {
                         AI review completed with {confidencePercent}% confidence.
                       </div>
                       <div className="list-item">
+                        Review stored in Supabase ai_audit_log when database permissions allow.
+                      </div>
+                      <div className="list-item">
                         Human review required before final decision.
                       </div>
                     </div>
@@ -276,7 +387,20 @@ export default function Home() {
             Built by <strong>Jamshir Qureshi</strong> · AI Architect & Software Engineering Portfolio Demo
           </p>
           <p>
-            Demonstrates AI decision support, human-in-the-loop review, policy evidence, workflow design, and responsible AI controls.
+            Demonstrates Supabase-backed pgvector RAG, Groq LLM decision support, human-in-the-loop review,
+            policy evidence, auditability, and responsible AI controls.
+          </p>
+          <p>
+            <a
+              href={
+                process.env.NEXT_PUBLIC_GITHUB_REPO_URL ||
+                'https://github.com/llmaideveloper/assistiq-banking-copilot/blob/main/README.md'
+              }
+              target="_blank"
+              rel="noreferrer"
+            >
+              View GitHub README and architecture
+            </a>
           </p>
         </footer>
       </div>
