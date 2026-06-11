@@ -1,11 +1,8 @@
 import { NextResponse } from 'next/server';
 import { getSupabaseServerClient } from '../../lib/supabaseServer';
+import { createDeterministicEmbedding } from '../../lib/embedding';
 
-type PolicyEvidence = {
-  document: string;
-  section: string;
-  quote: string;
-};
+type PolicyEvidence = { document: string; section: string; quote: string };
 
 type AiResponse = {
   recommendation: string;
@@ -21,13 +18,20 @@ type AiResponse = {
   modelUsed: string;
 };
 
+type RetrievedChunk = {
+  id?: string;
+  document_id?: string;
+  section?: string;
+  content?: string;
+  similarity?: number;
+};
+
 function safeJsonParse(text: string): AiResponse | null {
   try {
     return JSON.parse(text);
   } catch {
     const match = text.match(/\{[\s\S]*\}/);
     if (!match) return null;
-
     try {
       return JSON.parse(match[0]);
     } catch {
@@ -42,12 +46,9 @@ function fallbackResponse(params: {
   payments: any[];
   policyEvidence: PolicyEvidence[];
   question: string;
+  retrievalMode: string;
 }): AiResponse {
-  const maxDelinquency = Math.max(
-    0,
-    ...params.loans.map((loan) => Number(loan.delinquency_days || 0))
-  );
-
+  const maxDelinquency = Math.max(0, ...params.loans.map((loan) => Number(loan.delinquency_days || 0)));
   const riskBand = String(params.customer?.risk_band || 'unknown').toLowerCase();
   const employmentStatus = String(params.customer?.employment_status || 'unknown').toLowerCase();
 
@@ -63,18 +64,14 @@ function fallbackResponse(params: {
     riskFlags.push('Manager review recommended because delinquency or risk level requires additional validation.');
   }
 
-  if (maxDelinquency > 30) {
-    riskFlags.push('Delinquency is greater than 30 days.');
-  }
-
+  if (maxDelinquency > 30) riskFlags.push('Delinquency is greater than 30 days.');
   if (employmentStatus.includes('reduced') || employmentStatus.includes('leave')) {
     riskFlags.push('Employment status indicates potential income disruption that requires documentation.');
   }
 
   return {
     recommendation,
-    summary:
-      'Supabase-backed decision-support review completed. Groq response was unavailable, so deterministic fallback logic was used.',
+    summary: `Supabase-backed decision-support review completed using ${params.retrievalMode}. Groq response was unavailable, so deterministic fallback logic was used.`,
     confidence: recommendation === 'LIKELY_ELIGIBLE_FOR_REVIEW' ? 0.82 : 0.72,
     policyEvidence: params.policyEvidence,
     customerFactors: [
@@ -87,20 +84,11 @@ function fallbackResponse(params: {
       `Loans reviewed: ${params.loans.length}`,
       `Payments reviewed: ${params.payments.length}`,
     ],
-    missingInformation: [
-      'Updated income verification',
-      'Hardship reason documentation',
-      'Customer consent for hardship review',
-    ],
+    missingInformation: ['Updated income verification', 'Hardship reason documentation', 'Customer consent for hardship review'],
     riskFlags,
-    allowedActions: [
-      'Request documentation',
-      'Create case note',
-      'Escalate to manager',
-    ],
-    disclaimer:
-      'This is AI decision support only. It must not approve or deny hardship assistance. Final review must be completed by an authorized bank employee.',
-    dataSource: 'Supabase PostgreSQL + deterministic fallback',
+    allowedActions: ['Request documentation', 'Create case note', 'Escalate to manager'],
+    disclaimer: 'This is AI decision support only. It must not approve or deny hardship assistance. Final review must be completed by an authorized bank employee.',
+    dataSource: `Supabase PostgreSQL + ${params.retrievalMode} + deterministic fallback`,
     modelUsed: 'fallback-rules',
   };
 }
@@ -109,46 +97,55 @@ function normalizeAiResponse(value: any, fallback: AiResponse): AiResponse {
   return {
     recommendation: String(value?.recommendation || fallback.recommendation),
     summary: String(value?.summary || fallback.summary),
-    confidence:
-      typeof value?.confidence === 'number'
-        ? value.confidence
-        : Number(value?.confidence || fallback.confidence),
-    policyEvidence: Array.isArray(value?.policyEvidence)
-      ? value.policyEvidence
-      : fallback.policyEvidence,
-    customerFactors: Array.isArray(value?.customerFactors)
-      ? value.customerFactors
-      : fallback.customerFactors,
-    missingInformation: Array.isArray(value?.missingInformation)
-      ? value.missingInformation
-      : fallback.missingInformation,
+    confidence: typeof value?.confidence === 'number' ? value.confidence : Number(value?.confidence || fallback.confidence),
+    policyEvidence: Array.isArray(value?.policyEvidence) ? value.policyEvidence : fallback.policyEvidence,
+    customerFactors: Array.isArray(value?.customerFactors) ? value.customerFactors : fallback.customerFactors,
+    missingInformation: Array.isArray(value?.missingInformation) ? value.missingInformation : fallback.missingInformation,
     riskFlags: Array.isArray(value?.riskFlags) ? value.riskFlags : fallback.riskFlags,
-    allowedActions: Array.isArray(value?.allowedActions)
-      ? value.allowedActions
-      : fallback.allowedActions,
+    allowedActions: Array.isArray(value?.allowedActions) ? value.allowedActions : fallback.allowedActions,
     disclaimer: String(value?.disclaimer || fallback.disclaimer),
     dataSource: String(value?.dataSource || fallback.dataSource),
     modelUsed: String(value?.modelUsed || fallback.modelUsed),
   };
 }
 
+async function retrievePolicyEvidence(params: {
+  supabase: ReturnType<typeof getSupabaseServerClient>;
+  question: string;
+}) {
+  const vectorDimensions = Number(process.env.VECTOR_DIMENSIONS || 1536);
+  const queryEmbedding = createDeterministicEmbedding(params.question, vectorDimensions);
+
+  const { data: vectorMatches, error: vectorError } = await params.supabase.rpc('match_document_chunks', {
+    query_embedding: queryEmbedding,
+    match_count: 5,
+  });
+
+  if (!vectorError && Array.isArray(vectorMatches) && vectorMatches.length > 0) {
+    return { chunks: vectorMatches as RetrievedChunk[], retrievalMode: 'pgvector RAG retrieval' };
+  }
+
+  const { data: fallbackChunks, error: chunksError } = await params.supabase
+    .from('document_chunks')
+    .select('id, document_id, section, content')
+    .limit(5);
+
+  if (chunksError) throw new Error(`Failed to load policy evidence: ${chunksError.message}`);
+
+  return {
+    chunks: (fallbackChunks || []) as RetrievedChunk[],
+    retrievalMode: vectorError ? `fallback policy retrieval; vector search unavailable: ${vectorError.message}` : 'fallback policy retrieval',
+  };
+}
+
 export async function POST(req: Request) {
   try {
     const { customerId = 'C1001', question = '' } = await req.json();
-
     const supabase = getSupabaseServerClient();
 
-    const { data: customer, error: customerError } = await supabase
-      .from('customers')
-      .select('*')
-      .eq('id', customerId)
-      .single();
-
+    const { data: customer, error: customerError } = await supabase.from('customers').select('*').eq('id', customerId).single();
     if (customerError || !customer) {
-      return NextResponse.json(
-        { error: `Customer ${customerId} not found`, details: customerError?.message },
-        { status: 404 }
-      );
+      return NextResponse.json({ error: `Customer ${customerId} not found`, details: customerError?.message }, { status: 404 });
     }
 
     const { data: loans, error: loansError } = await supabase
@@ -157,15 +154,9 @@ export async function POST(req: Request) {
       .eq('customer_id', customerId)
       .order('created_at', { ascending: false });
 
-    if (loansError) {
-      return NextResponse.json(
-        { error: 'Failed to load loans', details: loansError.message },
-        { status: 500 }
-      );
-    }
+    if (loansError) return NextResponse.json({ error: 'Failed to load loans', details: loansError.message }, { status: 500 });
 
     const loanIds = (loans || []).map((loan) => loan.id);
-
     let payments: any[] = [];
 
     if (loanIds.length > 0) {
@@ -175,96 +166,58 @@ export async function POST(req: Request) {
         .in('loan_id', loanIds)
         .order('payment_date', { ascending: false });
 
-      if (paymentsError) {
-        return NextResponse.json(
-          { error: 'Failed to load payments', details: paymentsError.message },
-          { status: 500 }
-        );
-      }
-
+      if (paymentsError) return NextResponse.json({ error: 'Failed to load payments', details: paymentsError.message }, { status: 500 });
       payments = paymentRows || [];
     }
 
-    const { data: chunks, error: chunksError } = await supabase
-      .from('document_chunks')
-      .select('id, document_id, section, content')
-      .limit(5);
-
-    if (chunksError) {
-      return NextResponse.json(
-        { error: 'Failed to load policy evidence', details: chunksError.message },
-        { status: 500 }
-      );
-    }
-
-    const documentIds = Array.from(
-      new Set((chunks || []).map((chunk) => chunk.document_id).filter(Boolean))
-    );
+    const { chunks, retrievalMode } = await retrievePolicyEvidence({ supabase, question: question || `hardship review for customer ${customerId}` });
+    const documentIds = Array.from(new Set((chunks || []).map((chunk) => chunk.document_id).filter(Boolean)));
 
     let policyDocs: any[] = [];
-
     if (documentIds.length > 0) {
-      const { data: docs } = await supabase
-        .from('policy_documents')
-        .select('id, title, source_path')
-        .in('id', documentIds);
-
+      const { data: docs } = await supabase.from('policy_documents').select('id, title, source_path').in('id', documentIds);
       policyDocs = docs || [];
     }
 
     const policyEvidence: PolicyEvidence[] = (chunks || []).map((chunk) => {
       const doc = policyDocs.find((d) => d.id === chunk.document_id);
-
+      const similarity = typeof chunk.similarity === 'number' ? ` Similarity score: ${chunk.similarity.toFixed(3)}.` : '';
       return {
         document: doc?.title || chunk.document_id || 'policy-document',
         section: chunk.section || 'Policy Evidence',
-        quote: chunk.content || '',
+        quote: `${chunk.content || ''}${similarity}`,
       };
     });
 
-    const fallback = fallbackResponse({
-      customer,
-      loans: loans || [],
-      payments,
-      policyEvidence,
-      question,
-    });
-
+    const fallback = fallbackResponse({ customer, loans: loans || [], payments, policyEvidence, question, retrievalMode });
     const groqApiKey = process.env.GROQ_API_KEY;
 
     if (!groqApiKey) {
-      fallback.summary =
-        'Groq API key is not configured, so deterministic fallback logic was used with Supabase data.';
+      fallback.summary = 'Groq API key is not configured, so deterministic fallback logic was used with Supabase and retrieved policy evidence.';
       return NextResponse.json(fallback);
     }
 
     const prompt = `
 You are an AI decision-support assistant for a regulated banking hardship review workflow.
 
-You must follow these rules:
+Rules:
 - Do not approve or deny hardship assistance.
 - Provide decision support only.
-- Use the supplied customer, loan, payment, and policy evidence.
+- Use the supplied customer, loan, payment, and retrieved policy evidence.
 - Cite policy evidence in the policyEvidence array.
 - Identify missing documentation.
 - Identify risk flags.
 - Recommend allowed next actions only.
 - Final decision must require authorized human review.
 - Keep the response concise and professional.
-- Make the answer specific to the customer, loan/payment history, and the user's question.
+- Make the answer specific to the customer, loan/payment history, retrieved policy evidence, and the user's question.
 
 Return ONLY valid JSON with this exact schema:
 {
   "recommendation": "string",
   "summary": "string",
   "confidence": number,
-  "policyEvidence": [
-    {
-      "document": "string",
-      "section": "string",
-      "quote": "string"
-    }
-  ],
+  "policyEvidence": [{ "document": "string", "section": "string", "quote": "string" }],
   "customerFactors": ["string"],
   "missingInformation": ["string"],
   "riskFlags": ["string"],
@@ -274,89 +227,45 @@ Return ONLY valid JSON with this exact schema:
   "modelUsed": "string"
 }
 
-Customer:
-${JSON.stringify(customer, null, 2)}
-
-Loans:
-${JSON.stringify(loans || [], null, 2)}
-
-Payments:
-${JSON.stringify(payments || [], null, 2)}
-
-Policy evidence:
-${JSON.stringify(policyEvidence, null, 2)}
-
-User question:
-${question}
+Retrieval mode: ${retrievalMode}
+Customer: ${JSON.stringify(customer, null, 2)}
+Loans: ${JSON.stringify(loans || [], null, 2)}
+Payments: ${JSON.stringify(payments || [], null, 2)}
+Retrieved policy evidence: ${JSON.stringify(policyEvidence, null, 2)}
+User question: ${question}
 `;
 
     const groqResponse = await fetch('https://api.groq.com/openai/v1/chat/completions', {
       method: 'POST',
-      headers: {
-        Authorization: `Bearer ${groqApiKey}`,
-        'Content-Type': 'application/json',
-      },
+      headers: { Authorization: `Bearer ${groqApiKey}`, 'Content-Type': 'application/json' },
       body: JSON.stringify({
         model: 'llama-3.1-8b-instant',
         temperature: 0.2,
         messages: [
-          {
-            role: 'system',
-            content:
-              'You are a cautious banking AI assistant that returns only valid JSON for decision-support workflows.',
-          },
-          {
-            role: 'user',
-            content: prompt,
-          },
+          { role: 'system', content: 'You are a cautious banking AI assistant that returns only valid JSON for decision-support workflows.' },
+          { role: 'user', content: prompt },
         ],
       }),
     });
 
     if (!groqResponse.ok) {
       const errorText = await groqResponse.text();
-
-      fallback.summary =
-        `Groq call failed, so deterministic fallback was used. Groq error: ${errorText.slice(0, 180)}`;
-
-      await supabase.from('ai_audit_log').insert({
-        customer_id: customerId,
-        question,
-        answer: fallback,
-        model_used: fallback.modelUsed,
-        confidence: fallback.confidence,
-        retrieved_document_ids: documentIds,
-      });
-
+      fallback.summary = `Groq call failed, so deterministic fallback was used. Groq error: ${errorText.slice(0, 180)}`;
+      await supabase.from('ai_audit_log').insert({ customer_id: customerId, question, answer: fallback, model_used: fallback.modelUsed, confidence: fallback.confidence, retrieved_document_ids: documentIds });
       return NextResponse.json(fallback);
     }
 
     const groqJson = await groqResponse.json();
     const content = groqJson?.choices?.[0]?.message?.content || '';
-
     const parsed = safeJsonParse(content);
     const finalAnswer: AiResponse = normalizeAiResponse(parsed, fallback);
 
-    finalAnswer.dataSource = 'Supabase PostgreSQL + Groq LLM';
+    finalAnswer.dataSource = `Supabase PostgreSQL + ${retrievalMode} + Groq LLM`;
     finalAnswer.modelUsed = 'llama-3.1-8b-instant';
 
-    await supabase.from('ai_audit_log').insert({
-      customer_id: customerId,
-      question,
-      answer: finalAnswer,
-      model_used: finalAnswer.modelUsed,
-      confidence: finalAnswer.confidence,
-      retrieved_document_ids: documentIds,
-    });
-
+    await supabase.from('ai_audit_log').insert({ customer_id: customerId, question, answer: finalAnswer, model_used: finalAnswer.modelUsed, confidence: finalAnswer.confidence, retrieved_document_ids: documentIds });
     return NextResponse.json(finalAnswer);
   } catch (error: any) {
-    return NextResponse.json(
-      {
-        error: 'AI review failed',
-        details: error?.message || 'Unknown error',
-      },
-      { status: 500 }
-    );
+    return NextResponse.json({ error: 'AI review failed', details: error?.message || 'Unknown error' }, { status: 500 });
   }
 }
